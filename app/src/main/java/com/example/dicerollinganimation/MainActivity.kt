@@ -1,5 +1,6 @@
 package com.example.dicerollinganimation
 
+import android.media.MediaPlayer
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -34,8 +35,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -46,6 +49,7 @@ import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 import com.example.dicerollinganimation.ui.theme.DiceRollingAnimationTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 class MainActivity : ComponentActivity() {
@@ -84,8 +88,16 @@ fun DiceRoller(modifier: Modifier = Modifier) {
     var targetColor by remember { mutableStateOf(Color.White) }
     val animatedColor by animateColorAsState(targetColor, animationSpec = tween(300))
 
+    val context = LocalContext.current
+    val mediaPlayer = remember {
+        MediaPlayer.create(context, R.raw.dice_roll)
+    }
+    val rotationX = remember { Animatable(0f) }
+    val rotationY = remember { Animatable(0f) }
+
     LaunchedEffect(isRolling) {
         if (isRolling) {
+            mediaPlayer.start()
 
             targetColor = Color(
                 red = Random.nextFloat(),
@@ -94,18 +106,37 @@ fun DiceRoller(modifier: Modifier = Modifier) {
                 alpha = 1f
             )
 
-            val totalRolls = 1
-            for (i in 1..totalRolls) {
+            repeat(1) {
                 diceValue = (1..6).random()
 
-                scale.animateTo(1.3f, tween(80, easing = FastOutSlowInEasing))
-                scale.animateTo(1f, tween(80, easing = LinearOutSlowInEasing))
-                rotation.animateTo(rotation.value + 45f, tween(80))
+                val randX = Random.nextInt(-80, 80).toFloat()
+                val randY = Random.nextInt(-80, 80).toFloat()
+
+                launch {
+                    scale.animateTo(1.3f, tween(80))
+                    scale.animateTo(1f, tween(80))
+                }
+
+                launch {
+                    rotation.animateTo(rotation.value + Random.nextInt(120, 240), tween(150))
+                    rotationX.animateTo(randX, tween(150))
+                    rotationY.animateTo(randY, tween(150))
+
+                }
+
                 delay(50)
             }
+
+            // Reset 3D tilt after roll
+            launch {
+                rotationX.animateTo(0f, tween(300, easing = LinearOutSlowInEasing))
+                rotationY.animateTo(0f, tween(300, easing = LinearOutSlowInEasing))
+            }
+
             isRolling = false
         }
     }
+
 
     Box(
         modifier = Modifier
@@ -122,15 +153,18 @@ fun DiceRoller(modifier: Modifier = Modifier) {
             DiceFace(
                 value = diceValue,
                 scale = scale.value,
-                rotation = rotation.value,
+                rotationZ = rotation.value,
+                rotationX = rotationX.value,
+                rotationY = rotationY.value,
                 backgroundColor = animatedColor
             )
 
-            Spacer(modifier = Modifier.height(44.dp))
+
+            Spacer(modifier = Modifier.height(94.dp))
 
             Text(
                 text = if (isRolling) "Rolling..." else "You rolled a $diceValue!",
-                fontSize = 20.sp,
+                fontSize = 28.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = Color.White
             )
@@ -139,22 +173,50 @@ fun DiceRoller(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun DiceFace(value: Int, scale: Float, rotation: Float, backgroundColor: Color) {
+fun DiceFace(
+    value: Int,
+    scale: Float,
+    rotationZ: Float,
+    rotationX: Float,
+    rotationY: Float,
+    backgroundColor: Color
+) {
     val dotSize = 12.dp
     val spacing = 24.dp
 
     Box(
         modifier = Modifier
             .graphicsLayer {
+                val normalizedZ = rotationZ % 360
+
                 scaleX = scale
                 scaleY = scale
-                rotationZ = rotation % 360
+                this.rotationZ = normalizedZ
+                this.rotationX = rotationX
+                this.rotationY = rotationY
+                cameraDistance = 32 * density
+                shadowElevation = 16f
+                shape = RoundedCornerShape(16.dp)
+                clip = true
+
             }
             .size(120.dp)
-            .background(backgroundColor, shape = RoundedCornerShape(16.dp))
+            .background(backgroundColor)
             .border(2.dp, Color.Black, RoundedCornerShape(16.dp))
             .padding(16.dp)
     ) {
+        Box(
+            Modifier
+                .matchParentSize()
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(Color.White.copy(alpha = 0.15f), Color.Transparent),
+                        center = Offset(0.3f, 0.3f),
+                        radius = Float.POSITIVE_INFINITY
+                    )
+                )
+        )
+
         Canvas(modifier = Modifier.fillMaxSize()) {
             val radius = dotSize.toPx() / 2
             val w = size.width
@@ -205,6 +267,7 @@ fun DiceFace(value: Int, scale: Float, rotation: Float, backgroundColor: Color) 
     }
 }
 
+
 @Composable
 fun SplashScreen() {
     val composition by rememberLottieComposition(LottieCompositionSpec.Asset("lottiesDice.json"))
@@ -219,7 +282,7 @@ fun SplashScreen() {
         LottieAnimation(
             composition = composition,
             progress = progress,
-            modifier = Modifier.size(200.dp)
+            modifier = Modifier.size(300.dp)
         )
     }
 }
